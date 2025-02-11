@@ -37,9 +37,26 @@ contract RebaseToken is ERC20 {
     }
 
     function _mintAccruedInterest(address _user) internal {
+        uint256 previousPrincipleBalance = super.balanceOf(_user);
+        uint256 currentBalance = balanceOf(_user);
+        uint256 balanceIncrease = currentBalance - previousPrincipleBalance;
+
         // find their current balance of rebase tokens that have been minted to the user
         // calculate their current balance including any interest
         s_userInterestRate[_user] = s_interestRate;
+
+        s_lastUpdatedTimestamp[_user] = block.timestamp;
+
+        _mint(_user, balanceIncrease);
+    }
+
+    function burn(address _from, uint256 _amount) external {
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_from);
+        }
+
+        _mintAccruedInterest(_from);
+        _burn(_from, _amount);
     }
 
     function _calculateUserAccumulatedInterestSinceLastUpdate(address _user) internal view returns (uint256) {
@@ -52,5 +69,37 @@ contract RebaseToken is ERC20 {
 
         uint256 timeElapsed = block.timestamp - s_lastUpdatedTimestamp[_user];
         return 1 + (s_userInterestRate[_user] * timeElapsed);
+    }
+
+    function transfer(address _recipient, uint256 _amount) public override returns (bool) {
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(msg.sender);
+        }
+        _mintAccruedInterest(msg.sender);
+        _mintAccruedInterest(_recipient);
+        if (balanceOf(_recipient) == 0) {
+            s_userInterestRate[_recipient] = s_userInterestRate[msg.sender];
+        }
+        return super.transfer(_recipient, _amount);
+    }
+
+    function transferFrom(address _sender, address _recipient, uint256 _amount) public override returns (bool) {
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_sender);
+        }
+        _mintAccruedInterest(_sender);
+        _mintAccruedInterest(_recipient);
+        if (balanceOf(_recipient) == 0) {
+            s_userInterestRate[_recipient] = s_userInterestRate[_sender];
+        }
+        return super.transferFrom(_sender, _recipient, _amount);
+    }
+
+    function getInterestRate() external view returns (uint256) {
+        return s_interestRate;
+    }
+
+    function getUserInterestRate(address _user) external view returns (uint256) {
+        return s_userInterestRate[_user];
     }
 }
