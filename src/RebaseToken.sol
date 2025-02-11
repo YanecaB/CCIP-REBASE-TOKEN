@@ -2,10 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract RebaseToken is ERC20 {
+contract RebaseToken is ERC20, Ownable, AccessControl {
     error RebaseToken__InterestRateMustDecrease();
 
+    bytes32 private constant MINT_AND_BURN_ROLE = keccak256("MINT_AND_BURN_ROLE");
     uint256 private constant PRECISION_FACTOR = 1e18;
     uint256 private s_interestRate = 5e10;
 
@@ -14,9 +17,15 @@ contract RebaseToken is ERC20 {
 
     event InterestRateSet(uint256 indexed interestRate);
 
-    constructor() ERC20("Rebase Token", "RBT") {}
+    constructor() ERC20("Rebase Token", "RBT") Ownable(msg.sender) AccessControl() {
+        _grantRole(MINT_AND_BURN_ROLE, msg.sender);
+    }
 
-    function setInterestRate(uint256 _newInterestRate) external {
+    function grantMintAndBurnRole(address account) external onlyOwner {
+        _grantRole(MINT_AND_BURN_ROLE, account);
+    }
+
+    function setInterestRate(uint256 _newInterestRate) external onlyOwner {
         // Set the interest rate
         if (_newInterestRate > s_interestRate) {
             revert RebaseToken__InterestRateMustDecrease();
@@ -26,7 +35,7 @@ contract RebaseToken is ERC20 {
         emit InterestRateSet(_newInterestRate);
     }
 
-    function mint(address _to, uint256 _value) public {
+    function mint(address _to, uint256 _value) public onlyRole(MINT_AND_BURN_ROLE) {
         _mintAccruedInterest(_to);
         s_userInterestRate[_to] = s_interestRate;
         _mint(_to, _value);
@@ -50,7 +59,7 @@ contract RebaseToken is ERC20 {
         _mint(_user, balanceIncrease);
     }
 
-    function burn(address _from, uint256 _amount) external {
+    function burn(address _from, uint256 _amount) external onlyRole(MINT_AND_BURN_ROLE) {
         if (_amount == type(uint256).max) {
             _amount = balanceOf(_from);
         }
